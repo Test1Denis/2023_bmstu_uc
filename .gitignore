@@ -1,0 +1,6 @@
+Debug/
+Drivers/
+2023_bmstu_uc.elf.launch
+stm32_flash.ld
+.project
+.settings
