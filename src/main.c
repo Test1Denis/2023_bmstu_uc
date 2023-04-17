@@ -47,9 +47,12 @@ void longTask() {
 	for (int i = 0; i < 10000000; i++);
 }
 
+int pwm_ch3_tim3 = 0;
+
 void TIM6_DAC_IRQHandler(void) {
 	TIM6->SR &= ~TIM_SR_UIF;
-	GPIOC->ODR ^= GPIO_ODR_8;
+	TIM3->CCR1 = pwm_ch3_tim3;
+	pwm_ch3_tim3 += 10;
 }
 
 void init_gpio() {
@@ -70,6 +73,24 @@ void blinkLed() {
 		GPIOC->ODR &= ~GPIO_ODR_8;
 	}
 //	GPIOC->ODR ^= GPIO_ODR_8;
+}
+
+void init_tim3_pwm_ch3() {
+	RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
+	GPIOC->MODER |= GPIO_MODER_MODER8_1;	//AF
+//	GPIOC->AFR[0]; -- pins from 0 to 7
+//	GPIOC->AFR[1]; -- pins from 8 to 15
+
+	RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
+	TIM3->ARR = 8000;
+	TIM3->PSC = 1000;
+
+	TIM3->CCMR2 |= TIM_CCMR2_OC3M_1 | TIM_CCMR2_OC3M_2;	//pwm on
+	TIM3->CCER |= TIM_CCER_CC3E;
+
+
+
+	TIM3->CR1 |= TIM_CR1_CEN;
 }
 
 void init_tim6() {
