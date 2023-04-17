@@ -51,29 +51,18 @@ int pwm_ch3_tim3 = 0;
 
 void TIM6_DAC_IRQHandler(void) {
 	TIM6->SR &= ~TIM_SR_UIF;
-	TIM3->CCR1 = pwm_ch3_tim3;
-	pwm_ch3_tim3 += 10;
+
 }
 
-void init_gpio() {
-	// 1. turn on clock
-	RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
-	// 2. init peripheral
-	GPIOC->MODER |= GPIO_MODER_MODER8_0;
-
-	RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
-	GPIOB->MODER |= GPIO_MODER_MODER12_0;
-}
-
-void blinkLed() {
-	if (TIM6->CNT < 100) {
-		GPIOC->ODR |= GPIO_ODR_8;
+void TIM3_IRQHandler() {
+	TIM3->SR &= ~TIM_SR_UIF;
+	TIM3->CCR3 = pwm_ch3_tim3;
+	pwm_ch3_tim3 += 1;
+	if (pwm_ch3_tim3 > TIM3->ARR) {
+		pwm_ch3_tim3 = 0;
 	}
-	else {
-		GPIOC->ODR &= ~GPIO_ODR_8;
-	}
-//	GPIOC->ODR ^= GPIO_ODR_8;
 }
+
 
 void init_tim3_pwm_ch3() {
 	RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
@@ -83,12 +72,13 @@ void init_tim3_pwm_ch3() {
 
 	RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
 	TIM3->ARR = 8000;
-	TIM3->PSC = 1000;
-
+	TIM3->PSC = 2;
 	TIM3->CCMR2 |= TIM_CCMR2_OC3M_1 | TIM_CCMR2_OC3M_2;	//pwm on
 	TIM3->CCER |= TIM_CCER_CC3E;
 
-
+	TIM3->DIER |= TIM_DIER_UIE;
+	NVIC_EnableIRQ(TIM3_IRQn);
+	NVIC_SetPriority(TIM3_IRQn, 2);
 
 	TIM3->CR1 |= TIM_CR1_CEN;
 }
@@ -97,8 +87,8 @@ void init_tim6() {
 	/*1*/
 	RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;	//1
 	/*2*/
-	TIM6->ARR = 4000;
-	TIM6->PSC = 500;
+	TIM6->ARR = 100;
+	TIM6->PSC = 50;
 	/*3*/
 	TIM6->DIER |= TIM_DIER_UIE;
 	NVIC_EnableIRQ(TIM6_DAC_IRQn);
@@ -112,21 +102,13 @@ void init_tim6() {
 int main(void)
 {
 	int temp;
-	init_gpio();
-//	init_tim6();
+//	init_gpio();
+	init_tim6();
+	init_tim3_pwm_ch3();
 
 	double num = 1;
 
 	while(1) {	//for(;;) {}
-	//	longTask();
-		GPIOB->BSRR = GPIO_BSRR_BS_12;
-
-		for (int i = 0; i < 100; i++) {
-			num = (num + 3) / 1001.0;
-		}
-//		num = num / 1001.0;
-
-		GPIOB->BSRR = GPIO_BSRR_BR_12;
-
+		longTask();
 	}
 }
