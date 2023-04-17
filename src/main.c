@@ -63,6 +63,13 @@ void TIM3_IRQHandler() {
 	}
 }
 
+void EXTI0_1_IRQHandler(void) {
+	if ((EXTI->PR & EXTI_PR_PIF0) == EXTI_PR_PIF0) {
+		EXTI->PR |= EXTI_PR_PIF0;
+		GPIOC->ODR ^= GPIO_ODR_9;
+	}
+}
+
 
 void init_tim3_pwm_ch3() {
 	RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
@@ -97,6 +104,20 @@ void init_tim6() {
 	TIM6->CR1 |= TIM_CR1_CEN;
 }
 
+void init_gpioa() {
+	RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
+	GPIOA->MODER &= ~GPIO_MODER_MODER0;	//input
+
+	EXTI->IMR |= EXTI_IMR_IM0;
+	EXTI->EMR |= EXTI_EMR_EM0;
+
+	EXTI->RTSR |= EXTI_RTSR_RT0;
+	EXTI->FTSR |= EXTI_FTSR_FT0;
+
+	NVIC_SetPriority(EXTI0_1_IRQn, 8);
+	NVIC_EnableIRQ(EXTI0_1_IRQn);
+}
+
 
 
 int main(void)
@@ -105,10 +126,20 @@ int main(void)
 //	init_gpio();
 	init_tim6();
 	init_tim3_pwm_ch3();
+	init_gpioa();
 
-	double num = 1;
+	RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
+	GPIOC->MODER |= GPIO_MODER_MODER9_0;
 
 	while(1) {	//for(;;) {}
-		longTask();
+//		if ((GPIOA->IDR & GPIO_IDR_0) == 0x00) {
+//			GPIOC->BSRR = 1 << 9;
+//		}
+//		else {
+//			GPIOC->BSRR = 1 << (9 + 16);
+//		}
 	}
 }
+
+
+
