@@ -118,26 +118,51 @@ void init_gpioa() {
 	NVIC_EnableIRQ(EXTI0_1_IRQn);
 }
 
+void init_usart1() {
+
+	RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
+	GPIOA->MODER |= GPIO_MODER_MODER9_1 | GPIO_MODER_MODER10_1;
+	GPIOA->AFR[1] |= (1 << 4) | (1 << 8);
+
+//		0000 0001 0001 0000
+// 			 AF10 AF09 AF08
+
+	RCC->APB2ENR |= RCC_APB2ENR_USART1EN;
+	USART1->CR1 |= USART_CR1_TE | USART_CR1_RE;
+
+	USART1->CR2 &= ~USART_CR2_MSBFIRST;	//msb first
+	USART1->BRR = SystemCoreClock / 9600;
+
+	USART1->CR3 |= USART_CR3_OVRDIS;	//off overrun error detect
+
+	USART1->CR1 |= USART_CR1_UE;
+}
+
+void putData(uint8_t data) {
+	USART1->TDR = data;
+}
+
 
 
 int main(void)
 {
-	int temp;
+//	int temp;
 //	init_gpio();
-	init_tim6();
-	init_tim3_pwm_ch3();
-	init_gpioa();
+//	init_tim6();
+//	init_tim3_pwm_ch3();
+//	init_gpioa();
+	init_usart1();
 
 	RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
 	GPIOC->MODER |= GPIO_MODER_MODER9_0;
 
-	while(1) {	//for(;;) {}
-//		if ((GPIOA->IDR & GPIO_IDR_0) == 0x00) {
-//			GPIOC->BSRR = 1 << 9;
-//		}
-//		else {
-//			GPIOC->BSRR = 1 << (9 + 16);
-//		}
+	uint8_t data = 0;
+	while(1) {
+		if ((USART1->ISR & USART_ISR_TXE) !=  USART_ISR_TXE) {
+			continue;
+		}
+		putData(data);
+		data++;
 	}
 }
 
