@@ -29,140 +29,113 @@ SOFTWARE.
 
 /* Includes */
 #include "stm32f0xx.h"
+#define DMA_ADC
+#define TIM15_TRGO
 
-/* Private macro */
-/* Private variables */
-/* Private function prototypes */
-/* Private functions */
+uint16_t dataAdc[1024];
+uint8_t statusWork = 0;
 
-/**
-**===========================================================================
-**
-**  Abstract: main program
-**
-**===========================================================================
-*/
+#define DMA_DATA_ADC_RDY	(1 << 0)
 
-void longTask() {
-	for (int i = 0; i < 10000000; i++);
+void DMA1_Channel1_IRQHandler() {
+	DMA1->IFCR |= DMA_IFCR_CTCIF1;
+	GPIOC->ODR ^= GPIO_ODR_8;
+
+	statusWork |= DMA_DATA_ADC_RDY;
 }
 
-int pwm_ch3_tim3 = 0;
+void ADC_dma_init() {
+	RCC->AHBENR |= RCC_AHBENR_DMA1EN;
 
-void TIM6_DAC_IRQHandler(void) {
-	TIM6->SR &= ~TIM_SR_UIF;
+	DMA1_Channel1->CNDTR = 32;
+	DMA1_Channel1->CMAR = (uint32_t)&dataAdc[0];
+	DMA1_Channel1->CPAR = (uint32_t)(&(ADC1->DR));
 
+	DMA1_Channel1->CCR |= DMA_CCR_MINC;
+	DMA1_Channel1->CCR |= DMA_CCR_PSIZE_0;
+	DMA1_Channel1->CCR |= DMA_CCR_MSIZE_0;
+	DMA1_Channel1->CCR &= ~DMA_CCR_DIR;	//from p to m
+
+	DMA1_Channel1->CCR |= DMA_CCR_CIRC;
+
+	DMA1_Channel1->CCR |= DMA_CCR_TCIE;
+
+	NVIC_SetPriority(DMA1_Ch1_IRQn, 5);
+	NVIC_EnableIRQ(DMA1_Ch1_IRQn);
+	__enable_irq();
+
+	DMA1_Channel1->CCR |= DMA_CCR_EN;
 }
 
-void TIM3_IRQHandler() {
-	TIM3->SR &= ~TIM_SR_UIF;
-	TIM3->CCR3 = pwm_ch3_tim3;
-	pwm_ch3_tim3 += 1;
-	if (pwm_ch3_tim3 > TIM3->ARR) {
-		pwm_ch3_tim3 = 0;
-	}
-}
-
-void EXTI0_1_IRQHandler(void) {
-	if ((EXTI->PR & EXTI_PR_PIF0) == EXTI_PR_PIF0) {
-		EXTI->PR |= EXTI_PR_PIF0;
-		GPIOC->ODR ^= GPIO_ODR_9;
-	}
-}
-
-
-void init_tim3_pwm_ch3() {
-	RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
-	GPIOC->MODER |= GPIO_MODER_MODER8_1;	//AF
-//	GPIOC->AFR[0]; -- pins from 0 to 7
-//	GPIOC->AFR[1]; -- pins from 8 to 15
-
-	RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
-	TIM3->ARR = 8000;
-	TIM3->PSC = 2;
-	TIM3->CCMR2 |= TIM_CCMR2_OC3M_1 | TIM_CCMR2_OC3M_2;	//pwm on
-	TIM3->CCER |= TIM_CCER_CC3E;
-
-	TIM3->DIER |= TIM_DIER_UIE;
-	NVIC_EnableIRQ(TIM3_IRQn);
-	NVIC_SetPriority(TIM3_IRQn, 2);
-
-	TIM3->CR1 |= TIM_CR1_CEN;
-}
-
-void init_tim6() {
-	/*1*/
-	RCC->APB1ENR |= RCC_APB1ENR_TIM6EN;	//1
-	/*2*/
-	TIM6->ARR = 100;
-	TIM6->PSC = 50;
-	/*3*/
-	TIM6->DIER |= TIM_DIER_UIE;
-	NVIC_EnableIRQ(TIM6_DAC_IRQn);
-	NVIC_SetPriority(TIM6_DAC_IRQn, 2);
-	/*4*/
-	TIM6->CR1 |= TIM_CR1_CEN;
-}
-
-void init_gpioa() {
+void ADC_init() {
 	RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
-	GPIOA->MODER &= ~GPIO_MODER_MODER0;	//input
+	GPIOA->MODER |= GPIO_MODER_MODER0;	//pa0 as analog function
 
-	EXTI->IMR |= EXTI_IMR_IM0;
-	EXTI->EMR |= EXTI_EMR_EM0;
+	RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
+	GPIOB->MODER |= GPIO_MODER_MODER0;	//pb0 as analog function
 
-	EXTI->RTSR |= EXTI_RTSR_RT0;
-	EXTI->FTSR |= EXTI_FTSR_FT0;
+	RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;
+	RCC->CR2 |= RCC_CR2_HSI14ON;
 
-	NVIC_SetPriority(EXTI0_1_IRQn, 8);
-	NVIC_EnableIRQ(EXTI0_1_IRQn);
+
+	ADC1->CFGR1 |= ADC_CFGR1_CONT;
+	ADC1->CFGR1 |= ADC_CFGR1_OVRMOD;
+	ADC1->SMPR &= ~ADC_SMPR1_SMPR;	//0x07 239.5 adc cycles
+	ADC1->CHSELR = 0x0001;	//1 and 8 channels are ON...
+
+#ifdef DMA_ADC
+	ADC_dma_init();
+	ADC1->CFGR1 |= ADC_CFGR1_DMACFG;
+	ADC1->CFGR1 |= ADC_CFGR1_DMAEN;
+#endif
+
+#ifdef TIM15_TRGO
+	ADC1->CFGR1 &= ~ADC_CFGR1_CONT;
+	ADC1->CFGR1 |= ADC_CFGR1_DISCEN;
+	ADC1->CFGR1 |= ADC_CFGR1_EXTEN_0;
+	ADC1->CFGR1 |= ADC_CFGR1_EXTSEL_2;
+#endif
+
+	ADC1->CR |= ADC_CR_ADEN;
+	while((ADC1->ISR & ADC_ISR_ADRDY) != ADC_ISR_ADRDY);
+	ADC1->CR |= ADC_CR_ADSTART;
 }
 
-void init_usart1() {
+int processStatus() {
+	switch (statusWork) {
+		case DMA_DATA_ADC_RDY :
+			statusWork &= ~DMA_DATA_ADC_RDY;
+			//обрабатываем данные
+		break;
+	}
 
-	RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
-	GPIOA->MODER |= GPIO_MODER_MODER9_1 | GPIO_MODER_MODER10_1;
-	GPIOA->AFR[1] |= (1 << 4) | (1 << 8);
-
-//		0000 0001 0001 0000
-// 			 AF10 AF09 AF08
-
-	RCC->APB2ENR |= RCC_APB2ENR_USART1EN;
-	USART1->CR1 |= USART_CR1_TE | USART_CR1_RE;
-
-	USART1->CR2 &= ~USART_CR2_MSBFIRST;	//msb first
-	USART1->BRR = SystemCoreClock / 9600;
-
-	USART1->CR3 |= USART_CR3_OVRDIS;	//off overrun error detect
-
-	USART1->CR1 |= USART_CR1_UE;
+	return statusWork;
 }
 
-void putData(uint8_t data) {
-	USART1->TDR = data;
+void tim15_as_trgO() {
+	RCC->APB2ENR |= RCC_APB2ENR_TIM15EN;
+	TIM15->ARR = 500;
+	TIM15->PSC = 8;
+#ifdef TIM15_TRGO
+	TIM15->CR2 |= TIM_CR2_MMS_1;	//update tim15_trgO
+#endif
+	TIM15->CR1 |= TIM_CR1_CEN;
 }
-
-
 
 int main(void)
 {
-//	int temp;
-//	init_gpio();
-//	init_tim6();
-//	init_tim3_pwm_ch3();
-//	init_gpioa();
-	init_usart1();
-
 	RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
-	GPIOC->MODER |= GPIO_MODER_MODER9_0;
+	GPIOC->MODER |= GPIO_MODER_MODER8_0;
+	uint16_t dataADC[2];
+	uint8_t currentNumAdcCh = 0;
 
-	uint8_t data = 0;
+	ADC_init();
+
+	tim15_as_trgO();
+
 	while(1) {
-		if ((USART1->ISR & USART_ISR_TXE) !=  USART_ISR_TXE) {
-			continue;
-		}
-		putData(data);
-		data++;
+		processStatus();
+
 	}
 }
 
